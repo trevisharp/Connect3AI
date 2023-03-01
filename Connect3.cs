@@ -1,3 +1,5 @@
+using System;
+
 public enum Piece : byte
 {
     Empty = 0,
@@ -25,9 +27,8 @@ public struct Connect3State
     private readonly uint lineVerifier;
     private readonly uint diagonalVerifier;
 
-    public Piece this[int i, int j]
-        => (Piece)((stateInfo >> 2 * i + 8 * j) % 4);
-
+    public Piece this[int i, int j] => (Piece)((stateInfo >> 2 * i + 8 * j) % 4);
+    
     public Connect3State()
     {
         this.stateInfo = 0;
@@ -41,16 +42,31 @@ public struct Connect3State
     {
         var p = (uint)piece;
         var level = state.GetLevel(x);
+        if (level > 3)
+            throw new Exception("Column is fully");
+
         var bitPosition = 4 * level + x;
         p <<= (int)(2 * bitPosition);
         
         this.stateInfo = state.stateInfo | p;
         
         this.levels = (ushort)state.addLevel(x);
+
         this.collumnVerifier = initialVerifier;
         this.lineVerifier = initialVerifier;
         this.diagonalVerifier = initialVerifier;
         
+        this.collumnVerifier = updateVerifier(
+            state.collumnVerifier, level, x, (uint)piece
+        );
+
+        this.lineVerifier = updateVerifier(
+            state.lineVerifier, x, level, (uint)piece
+        );
+
+        this.diagonalVerifier = updateDiagonalVerifier(
+            state.diagonalVerifier, x, level, (uint)piece
+        );
     }
     
     public uint GetLevel(byte collumn)
@@ -91,21 +107,70 @@ public struct Connect3State
         validateMask(collumnVerifier ^ mask) || 
         validateMask(diagonalVerifier ^ mask);
 
-    private bool validateMask(uint maskedVerifier)
-    {
-        uint validator = 
-            (maskedVerifier & mask1) |
-            (maskedVerifier & mask2) |
-            (maskedVerifier & mask3) |
-            (maskedVerifier & mask4) |
-            (maskedVerifier & mask5) |
-            (maskedVerifier & mask6) |
-            (maskedVerifier & mask7) |
-            (maskedVerifier & mask8);
-        
-        return validator > 0;
-    }
-
+    private bool validateMask(uint maskedVerifier) =>
+            (maskedVerifier & mask1) == 0 ||
+            (maskedVerifier & mask2) == 0 ||
+            (maskedVerifier & mask3) == 0 ||
+            (maskedVerifier & mask4) == 0 ||
+            (maskedVerifier & mask5) == 0 ||
+            (maskedVerifier & mask6) == 0 ||
+            (maskedVerifier & mask7) == 0 ||
+            (maskedVerifier & mask8) == 0;
+    
     private uint addLevel(byte collumn)
         => this.levels + (1u << (4 * collumn));
+
+    private uint updateVerifier(uint verifier, uint line, uint column, uint piece)
+    {
+        var pieceValue = 3 - 2 * (int)piece;
+        int bitSelector = (int)(8 * line);
+
+        if (column < 3)
+            verifier = updateVerifier(verifier, bitSelector, pieceValue);
+        
+        if (column > 0)
+            verifier = updateVerifier(verifier, bitSelector + 4, pieceValue);
+        
+        return verifier;
+    }
+
+    private uint updateDiagonalVerifier(uint verifier, uint line, uint column, uint piece)
+    {
+        var pieceValue = 3 - 2 * (int)piece;
+
+        if (line == column)
+        {
+            if (line < 3)
+                verifier = updateVerifier(verifier, 0, pieceValue);
+            if (line > 0)
+                verifier = updateVerifier(verifier, 4, pieceValue);
+        }
+        else if (line + column == 3)
+        {
+            if (line < 3)
+                verifier = updateVerifier(verifier, 8, pieceValue);
+            if (line > 0)
+                verifier = updateVerifier(verifier, 12, pieceValue);
+        }
+
+        if (line + column == 2)
+            verifier = updateVerifier(verifier, 16, pieceValue);
+        else if (line + column == 4)
+            verifier = updateVerifier(verifier, 20, pieceValue);
+        else if (line - column == 1)
+            verifier = updateVerifier(verifier, 24, pieceValue);
+        else if (line - column == uint.MaxValue)
+            verifier = updateVerifier(verifier, 28, pieceValue);
+
+        return verifier;
+    }
+
+    private uint updateVerifier(uint verifier, int bitSelector, int pieceValue)
+    {
+        uint mask = 15u << bitSelector;
+        uint value = (verifier & mask) >> bitSelector;
+        value = (uint)(value + pieceValue);
+        verifier = verifier & ~mask | value << bitSelector;
+        return verifier;
+    }
 }
